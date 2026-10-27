@@ -1,64 +1,44 @@
-# Vision-Language Caption Synthesis with ViT + GPT-2
+# Image Captioner
 
-Generates natural language descriptions of images using a Vision Transformer encoder paired with a GPT-2 decoder. Upload an image, get back one or more captions describing what's in it.
+Generates captions using the pretrained `nlpconnect/vit-gpt2-image-captioning` model: a ViT image encoder and GPT-2 text decoder. It converts images to RGB and uses beam search to produce one or more candidate descriptions. Captions may omit objects or describe things that are not present.
 
-## how it works
+## Run locally
 
-```
-image → ViT encoder → cross-attention → GPT-2 decoder → beam search → caption
-```
-
-the model is `nlpconnect/vit-gpt2-image-captioning` — a VisionEncoderDecoder that maps image patches through ViT, then decodes captions token-by-token with GPT-2. beam search (4 beams by default) picks the most probable sequence.
-
-**details:**
-- pretrained ViT for visual features + GPT-2 for language generation
-- KV cache enabled for faster decoding
-- supports multi-caption generation (up to 5 candidates)
-- max caption length: 64 tokens
-
-## setup
+Use Python 3.10+. From the repository root:
 
 ```bash
-pip install -r requirements.txt
-python main.py
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+uvicorn main:app --host 127.0.0.1 --port 8004
 ```
 
-runs at `localhost:8004`. swagger docs at `/docs`.
+On Windows PowerShell, activate with `.\.venv\Scripts\Activate.ps1`. Open `http://127.0.0.1:8004/docs`. Startup loads the model, image processor and tokenizer, downloading uncached files. CUDA is used when available, otherwise CPU. Requirements are unpinned.
 
-## api
+`streamlit run app.py` starts an upload-only interface with its own model instance. URL input is an API feature, not a Streamlit control.
 
-| endpoint | method | what it does |
-|----------|--------|-------------|
-| `/health` | GET | model status + device info |
-| `/caption` | POST | single caption from uploaded image |
-| `/caption/multi` | POST | multiple caption candidates |
-| `/caption/url` | POST | caption an image from a URL |
+## API
 
-## architecture
+| Method | Path | Behavior |
+|---|---|---|
+| GET | `/health` | Model and device status |
+| POST | `/caption` | One caption from an uploaded image |
+| POST | `/caption/multi` | Multiple caption candidates |
+| POST | `/caption/url` | Fetch an image URL and caption it |
 
-```
-core/
-├── config.py      → model ID, beam params, all settings
-└── captioner.py   → ImageCaptioner class, ViT+GPT2 inference
+[core/captioner.py](core/captioner.py) uses at least four beams, caps output at five candidates and sets a maximum caption length of 64 tokens. Use `num_captions` from 1 to 5: only the upper bound is enforced in code. Beam search ranks generated sequences; it does not verify what is in an image.
 
-api/
-├── schemas.py     → pydantic request/response models
-└── routes.py      → endpoint handlers, file/URL handling
+## Safety and evaluation limits
 
-main.py            → FastAPI entry point, lifespan
-app.py             → streamlit frontend
-```
+[api/routes.py](api/routes.py) reads complete uploads without a size cap. The URL endpoint fetches caller-supplied URLs without host/private-network restrictions or a response-size cap, and lacks the upload routes' loaded-model check. Do not expose it to untrusted callers; authentication, URL restrictions and resource limits require separate code work.
 
-## streamlit demo
+The API permits all CORS origins. The [loopback launch](https://uvicorn.dev/settings/) above avoids the all-interface, reload-enabled configuration in `python main.py`, but does not fix these application-level gaps.
 
-```bash
-streamlit run app.py
-```
+No caption-quality evaluation, hardware-specific timing benchmark or test suite is committed. Returned inference times are observations of individual calls, not promised CPU/GPU performance. Do not rely on generated captions for safety-critical identification.
 
-upload an image or provide a URL, get captions with inference timing.
+Setup, model execution and browser flows were not rerun for this documentation update.
 
-## requirements
+## Related implementations
 
-- python 3.10+
-- ~1GB for model weights
-- GPU recommended for faster inference (~1.5s on GPU vs ~5s on CPU)
+Related versions are in [ML-Portfolio-Projects](https://github.com/Zinga18018/ML-Portfolio-Projects): an [API variant](https://github.com/Zinga18018/ML-Portfolio-Projects/tree/master/project4-image-captioner) and a separate [HF Space variant](https://github.com/Zinga18018/ML-Portfolio-Projects/tree/master/hf-spaces/image-captioner). They share the project/model identity but have different code; their screenshots and deployment status are not evidence of a run of this repository.
+
